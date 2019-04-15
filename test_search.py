@@ -1,13 +1,13 @@
 from search import progress_bar, search_methods
-from examples import problems
+from example_searches import examples
 
 def main():
-    for problem in problems:
+    for example in examples:
         print('Problem:')
-        print(problem)
+        print(example)
 
         print('Searching for solutions...')
-        solution = progress_bar(search_methods['faux'], problem)
+        solution = progress_bar(search_methods['faux'], example)
 
         if solution:
             print('Solution found:')

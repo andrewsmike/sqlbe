@@ -1,8 +1,7 @@
 """
-This should be done as a CNF and a series of eval functions (with decorators indicating important invariances.)
+Tools related to query plans.
+- 
 """
-from tying import Set
-
 from models import Relation
 
 __all__ = [
@@ -16,6 +15,60 @@ def enumerate_sql(input_relations):
 def eval_sql(sql, input_relations):
     raise NotImplementedError
 
+def typing_validate_sql(program, input_relations):
+    pass
+
+@id_memoize
+def data_validate_sql(program, input_relations, output_relation):
+    pass
+
+
+
+
+# Question: Do I want to enumerate over logical plans or syntax?
+# Answer: Syntax.
+# Question: Can I make them isomorphic?
+# Answer: ... No, unfortunately.
+# Question: Can I treat the syntax as a superset of the logical plan?
+# Answer: ... I think so? What other restrictions are there? You're just representing
+#     operation configuration, beyond inputs, as nodes.
+"""
+class PartialSyntaxElement(object):
+    def __init__(self, rules):
+        self.rules = rules
+    def __or__(self, other):
+        if isinstance(other)
+
+class SyntaxElement(object):
+    def __init__(self, name):
+        pass
+    def __or__(self, other):
+        return PartialSyntaxElement(
+            [[self]],
+        ) | other
+
+
+# There are contextual/typing constraints - Column names, length, etc.
+# Maybe we could push typing information as we descend the AST, then do a second verification check?
+# After that, we try executing on a test case.
+sql_syntax = {
+    'query': either(
+        'select',
+        'union',
+        'set_diff',
+        'intersection',
+    ),
+    'select': either(
+    ),
+}
+
+"""
+"""
+Example trees:
+
+"""
+
+"""
 # - I need a better type definition and interface for intermediate tuple trees + their metadata... do I?
 # - I need constraints that are propagated down
 # In most cases where we have joining or filtering columns, we really want expressions (in fact, multiple expressions.) Should this get shoved into a lower select? Potentially implying an upper select? UGH.
@@ -109,25 +162,4 @@ def eq(source: Relation, key_cols: Set[str]):
 def const(source: Relation, key_cols: Set[str]):
     raise NotImplementedError
 
-"""
-operators = {
-        'subset': subset_operator, # Parameterized by subset of columns to keep
-        'filter': filter_operator, # Parameterized by column
-        'expr': expr_operator, # Parameterized by  basic operator tree (<, =, AND, OR, NOT, SYMBOL) and columns
-        'agg': agg_operator, # Parameterized by type and columns (sum, count, average, maximum, and minimum)
-    'num_expr': {
-        'add': add_operator,
-        'sub': sub_operator,
-        'mul': mul_operator,
-        'div': div_operator,
-    },
-    'bool_expr': {
-        'eq': eq_operator,
-        'lt': lt_operator,
-        'gt': gt_operator,
-
-        'or': or_operator,
-        'and': and_operator,
-        'not': not_operator,
-    }
 """
