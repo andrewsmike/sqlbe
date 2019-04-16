@@ -4,49 +4,58 @@ Used for debugging, testing, and demonstrating valid ASTs.
 """
 
 __all__ = [
-    'examples'
+    'example_asts'
 ]
 
-examples = {
+example_asts = {
     'department_students': (
         ['SELECT_AGG',
          [
              'SELECT_EXPRS', 
              ['EXPR_AS',
-              ['DOT',
-               ['SYMBOL', 'department'],
-               ['SYMBOL', 'name'],
+              ['EXPR',
+               ['DOT',
+                ['SYMBOL', 'department'],
+                ['SYMBOL', 'name'],
+               ],
               ],
               ['SYMBOL', 'department_name'],
              ],
              ['EXPR_AS',
               ['SUM',
-               ['SYMBOL', '1'],
+               ['EXPR', ['SYMBOL', '1']],
               ],
               ['SYMBOL', 'students'],
              ],
          ],
          [
-             'JOINS',
+             'TOP_JOINS',
              ['FROM',
               ['SYMBOL', 'students'],
              ],
              ['LEFT_JOIN_ON',
               ['SYMBOL', 'department'],
-              ['EQ',
-               ['DOT',
-                ['SYMBOL', 'department'],
-                ['SYMBOL', 'id'],
-               ],
-               ['DOT',
-                ['SYMBOL', 'student'],
-                ['SYMBOL', 'department_id'],
+              ['EXPR',
+               [
+                   'EQ',
+                   ['EXPR',
+                    ['DOT',
+                     ['SYMBOL', 'department'],
+                     ['SYMBOL', 'id'],
+                    ],
+                   ],
+                   ['EXPR',
+                    ['DOT',
+                     ['SYMBOL', 'student'],
+                     ['SYMBOL', 'department_id'],
+                    ],
+                   ],
                ],
               ],
              ],
          ],
          [
-             'GROUP_EXPR',
+             'EXPR',
              ['DOT',
               ['SYMBOL', 'student'],
               ['SYMBOL', 'name'],

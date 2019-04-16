@@ -6,9 +6,9 @@ from progressbar import (
 )
 
 from models import Relation, Example
-from sql import (
-    enumerate_sql,
-    eval_sql,
+from sql_eval import sql_eval
+from sql_ast import (
+    syntax_valid
 )
 
 from time import sleep
@@ -18,6 +18,15 @@ __all__ = [
     'search_methods',
     'progress_bar',
 ]
+
+def syntax_validate_sql(program):
+    return syntax_valid(program)
+
+def typing_validate_sql(program, input_relations):
+    pass
+
+def data_validate_sql(program, input_relations, output_relation):
+    pass
 
 def brute_force_search(problem, progress_bar=None):
     """
