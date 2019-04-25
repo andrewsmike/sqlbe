@@ -19,17 +19,10 @@ __all__ = [
     'progress_bar',
 ]
 
-def syntax_validate_sql(program):
-    return syntax_valid(program)
 
-def typing_validate_sql(program, input_relations):
-    pass
 
-def data_validate_sql(program, input_relations, output_relation):
-    pass
-
+"""
 def brute_force_search(problem, progress_bar=None):
-    """
     - Enumerate all program trees
     - Filter trees that return the correct output
     - Pull out the 'simplest' tree
@@ -37,14 +30,13 @@ def brute_force_search(problem, progress_bar=None):
 
     TODO:
     - Push set of symbols / constants
-    """
     for solution in enumerate_sql(dict(problem.input_relations)):
         result = eval_sql(solution, dict(problem.input_relations))
         if result == problem.output_relation:
             return result
     else:
         return None
-
+"""
 
 def faux_search(problem, progress_bar=None):
     """
@@ -57,7 +49,7 @@ def faux_search(problem, progress_bar=None):
     return None
 
 search_methods = {
-    'bruteforce': brute_force_search,
+#    'bruteforce': brute_force_search,
     'faux': faux_search,
 }
 

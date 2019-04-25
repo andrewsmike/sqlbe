@@ -1,24 +1,13 @@
 """
-Tools related to ASTs and the SQL CFG.
-
-CFG definition:
-- Each node type has a single production rule spec.
-- Each node type's production rule is structured as a sequence of child node links and their possible types.
-
-Example:
-SELECT = [{SELECT_AGG, SELECT_DUAL}]
-SELECT_AGG = [{SELECT_EXPRS, EXPR_AS}, {JOINS, FROM}, {GROUP_EXPRS, GROUP_EXPR}]
-SELECT_DUAL = [{SELECT_EXPRS, EXPR_AS}]
-
-The SQL CFG:
-- Targetting a simple SELECT or SELECT GROUP BY statement.
-- One or more JOINs, not many JOIN types specified.
-- Not many types of expression operators available.
+CFG / AST tools, SQL CFG, and a SQL AST -> Query string mapper.
 
 TODO:
 - CFG specifying patterns (left/right recursion/repetition)
 - Push in / pull out typing info at will
-- Collapse some nodes on creation for cleaner AST?
+- Collapse some nodes on creation for cleaner AST? (EXPR deflate.)
+- SQL query -> SQL AST? (This would be _awesome_ for testing.
+    I could also use tree enumeration to test the encode/decode functions
+    against each other.)
 """
 from collections import defaultdict
 from typing import (
@@ -32,8 +21,6 @@ from itertools import chain
 from tools import id_memoize
 
 __all__ = [
-    "sql_cfg",
-    "sql_heuristic_weight",
 
     "all_node_types",
     "undefined_node_types",
@@ -41,34 +28,25 @@ __all__ = [
     "syntax_valid",
     "tree_depth",
     "tree_map",
+
+    "sql_entry_tokens",
+    "sql_cfg",
+    "sql_heuristic_weight",
+
+    "sql_query_str"
 ]
 
 # SQL CFG spec and heuristic weights for depth measurements
-sql_entry_tokens = {'SELECT_AGG', 'SELECT_AGG_WHERE'}
+"""
+CFG specs:
+- Each node type has a single production rule spec.
+- Each node type's production rule is structured as a sequence of child node links and their possible types.
 
-sql_cfg = {
-    'SELECT_AGG': [{'SELECT_EXPRS', 'EXPR_AS'}, {'TOP_JOINS', 'FROM'}, {'GROUP_EXPRS', 'EXPR'}],
-    'SELECT_AGG_WHERE': [{'SELECT_EXPRS', 'EXPR_AS'}, {'TOP_JOINS', 'FROM'}, {'GROUP_EXPRS', 'EXPR'}, 'EXPR'],
-    'SELECT_EXPRS': [{'EXPR_AS'}, {'SELECT_EXPRS', 'EXPR_AS'}],
-    'EXPR_AS': ['EXPR', 'SYMBOL'],
-    'EXPR': [{'EQ', 'DOT', 'SYMBOL', 'SUM', 'AND'}],
-    'TOP_JOINS': ['FROM', {'JOINS', 'LEFT_JOIN_ON'}],
-    'JOINS': ['LEFT_JOIN_ON', {'JOINS', 'LEFT_JOIN_ON'}],
-    'FROM': ['SYMBOL'],
-    'LEFT_JOIN_ON': ['SYMBOL', 'EXPR'],
-    'GROUP_EXPRS': ['EXPR', {'GROUP_EXPRS', 'EXPR'}],
-    'AND': ['EXPR', 'EXPR'],
-    'EQ': ['EXPR', 'EXPR'],
-    'DOT': ['SYMBOL', 'SYMBOL'],
-    'SUM': ['EXPR'],
-    'SYMBOL': [None], # Special case. Accepts anything as a direct argument.
-}
-
-sql_heuristic_weight = defaultdict(lambda: 4, {
-    'JOINS': 30,
-    'GROUP_EXPRS': 20,
-    'SEL_EXPRS': 10,
-})
+CFG example:
+SELECT = [{SELECT_AGG, SELECT_DUAL}]
+SELECT_AGG = [{SELECT_EXPRS, EXPR_AS}, {JOINS, FROM}, {GROUP_EXPRS, GROUP_EXPR}]
+SELECT_DUAL = [{SELECT_EXPRS, EXPR_AS}]
+"""
 
 def all_node_types(cfg_spec):
     """
@@ -150,7 +128,6 @@ def syntax_valid(node, cfg_spec):
                 for child_node in node_children)
     )
 
-
 @id_memoize
 def tree_depth(node, node_type_weight=None):
     """
@@ -166,7 +143,7 @@ def tree_depth(node, node_type_weight=None):
 
     :Example:
     >>> from example_asts import example_asts
-    >>> example_ast = list(example_asts.values())[0] # Optionally pprint this.
+    >>> example_ast = example_asts['department_students']
 
     >>> from collections import defaultdict
     >>> from sql_ast import tree_depth
@@ -206,7 +183,7 @@ def tree_map(node, func, args=None, kwargs=None):
 
     :Example:
     >>> from example_asts import example_asts
-    >>> example_ast = list(example_asts.values())[0] # Optionally pprint this.
+    >>> example_ast = example_asts['department_students']
 
     >>> from pprint import pprint
     >>> from sql_ast import tree_depth, tree_map, sql_cfg, sql_heuristic_weight
@@ -256,6 +233,95 @@ def tree_map(node, func, args=None, kwargs=None):
         for node_child in node_children
     ]
 
+def ast_flatten(node,
+                type_blacklist : Optional[Set[str]]=None,
+                type_whitelist : Optional[Set[str]]=None):
+    """
+    The traversal-sorted list of the top-most nodes of a matching type.
+    Used to flatten multiple (potentially unbalanced) levels of an AST.
+
+    Assumes all descent paths eventually reach a matching node.
+
+    You may only specify a whitelist or a blacklist.
+
+    If the top-level node is a matching node, return [top_node].
+
+    :param AST node: Subtree to iterate across.
+    :param type_whitelist: Types of nodes to return.
+        May not be specified with blacklist.
+    :param type_blacklist: Types of nodes to ignore.
+        May not be specified with whitelist.
+
+    :rtype: List(AST)
+    :return: List of the top-most matching nodes in traversal order.
+
+    :Example:
+    >>> from pprint import pprint
+    >>> example_subtree = [
+            "IF",
+            ["EXPR", ["=", ["EXPR", ...], ["EXPR", ...]]], # Cond
+            ["EXPR", ...], # A
+            ["EXPR", ...], # B
+        ]
+    >>> pprint(list(ast_flatten(example_subtree, type_whitelist={'EXPR'})))
+    [['EXPR', ['=', ['EXPR', ...], ['EXPR', ...]]], # Cond
+     ['EXPR', ...], # A
+     ['EXPR', ...]] # B
+    >>> # Notice how the Cond subtree is _NOT_ explored or duplicated.
+    """
+    node_type, node_children = node[0], node[1:]
+
+    assert bool(type_whitelist) ^ bool(type_blacklist), (
+        "The top-most AST nodes matching a type whitelist and "
+        "blacklist makes no sense, only match on one criteria."
+    ) if type_whitelist and type_blacklist else (
+        "The top-most AST nodes need a matching criteria. Add a whitelist or a "
+        "blacklist."
+    )
+
+    if ((type_whitelist and (node_type in type_whitelist)) or
+        (type_blacklist and (node_type not in type_blacklist))):
+        return [node]
+
+    return chain(*[
+        ast_flatten(child, type_whitelist=type_whitelist, type_blacklist=type_blacklist)
+        for child in node_children
+    ])
+
+"""
+SQL CFG and tools.
+
+Notes about CFG:
+- Targetting a simple SELECT or SELECT GROUP BY statement.
+- One or more JOINs, not many JOIN types specified.
+- Not many types of expression operators available.
+"""
+sql_entry_tokens = {'SELECT_AGG', 'SELECT_AGG_WHERE'}
+
+sql_cfg = {
+    'SELECT_AGG': [{'SELECT_EXPRS', 'EXPR_AS'}, {'TOP_JOINS', 'FROM'}, {'GROUP_EXPRS', 'EXPR'}],
+    'SELECT_AGG_WHERE': [{'SELECT_EXPRS', 'EXPR_AS'}, {'TOP_JOINS', 'FROM'}, {'GROUP_EXPRS', 'EXPR'}, 'EXPR'],
+    'SELECT_EXPRS': [{'EXPR_AS'}, {'SELECT_EXPRS', 'EXPR_AS'}],
+    'EXPR_AS': ['EXPR', 'SYMBOL'],
+    'EXPR': [{'EQ', 'DOT', 'SYMBOL', 'SUM', 'AND'}],
+    'TOP_JOINS': ['FROM', {'JOINS', 'LEFT_JOIN_ON'}],
+    'JOINS': ['LEFT_JOIN_ON', {'JOINS', 'LEFT_JOIN_ON'}],
+    'FROM': ['SYMBOL'],
+    'LEFT_JOIN_ON': ['SYMBOL', 'EXPR'],
+    'GROUP_EXPRS': ['EXPR', {'GROUP_EXPRS', 'EXPR'}],
+    'AND': ['EXPR', 'EXPR'],
+    'EQ': ['EXPR', 'EXPR'],
+    'DOT': ['SYMBOL', 'SYMBOL'],
+    'SUM': ['EXPR'],
+    'SYMBOL': [None], # Special case. Accepts anything as a direct argument.
+}
+
+sql_heuristic_weight = defaultdict(lambda: 4, {
+    'JOINS': 30,
+    'GROUP_EXPRS': 20,
+    'SEL_EXPRS': 10,
+})
+
 # Helper for building SQL queries from SQL ASTs
 def query_str(
         select_exprs : List[str]=None,
@@ -287,8 +353,7 @@ def query_str(
         Example: ["40", "20"]
 
     :rtype: str
-    :return: Subquery-free SQL query string with the given parameters and
-        structure.
+    :return: SQL query string with the given parameters and structure.
 
     :Example:
     >>> from sql_ast import query_ast
@@ -374,61 +439,6 @@ def query_str(
     ]
 
     return "\n".join(query_parts)
-            
-def ast_flatten(node,
-                type_blacklist : Optional[Set[str]]=None,
-                type_whitelist : Optional[Set[str]]=None):
-    """
-    The traversal-sorted list of the top-most nodes of a matching type.
-    Used to flatten multiple (potentially unbalanced) levels of an AST.
-
-    Assumes all descent paths eventually reach a matching node.
-
-    You may only specify a whitelist or a blacklist.
-
-    If the top-level node is a matching node, return [top_node].
-
-    :param AST node: Subtree to iterate across.
-    :param type_whitelist: Types of nodes to return.
-        May not be specified with blacklist.
-    :param type_blacklist: Types of nodes to ignore.
-        May not be specified with whitelist.
-
-    :rtype: List(AST)
-    :return: List of the top-most matching nodes in traversal order.
-
-    :Example:
-    >>> from pprint import pprint
-    >>> example_subtree = [
-            "IF",
-            ["EXPR", ["=", ["EXPR", ...], ["EXPR", ...]]], # Cond
-            ["EXPR", ...], # A
-            ["EXPR", ...], # B
-        ]
-    >>> pprint(list(ast_flatten(example_subtree, type_whitelist={'EXPR'})))
-    [['EXPR', ['=', ['EXPR', ...], ['EXPR', ...]]], # Cond
-     ['EXPR', ...], # A
-     ['EXPR', ...]] # B
-    >>> # Notice how the Cond subtree is _NOT_ explored or duplicated.
-    """
-    node_type, node_children = node[0], node[1:]
-
-    assert bool(type_whitelist) ^ bool(type_blacklist), (
-        "The top-most AST nodes matching a type whitelist and "
-        "blacklist makes no sense, only match on one criteria."
-    ) if type_whitelist and type_blacklist else (
-        "The top-most AST nodes need a matching criteria. Add a whitelist or a "
-        "blacklist."
-    )
-
-    if ((type_whitelist and (node_type in type_whitelist)) or
-        (type_blacklist and (node_type not in type_blacklist))):
-        return [node]
-
-    return chain(*[
-        ast_flatten(child, type_whitelist=type_whitelist, type_blacklist=type_blacklist)
-        for child in node_children
-    ])
 
 
 # Functions to convert various subtree types into strings.
@@ -525,7 +535,17 @@ def sql_query_str(program):
     :param AST program: SQL AST to render.
 
     :Example:
-    >>> 
+    >>> from example_asts import example_asts
+    >>> example_ast = example_asts['department_students_weird_cond']
+
+    >>> print(sql_query_str(example_ast))
+    SELECT department.name AS department_name,
+           SUM(1) AS students
+      FROM students
+      LEFT JOIN department
+        ON some_flag
+       AND department.id = student.department_id
+     GROUP BY department.name
     """
     node_type, node_children = program[0], program[1:]
     assert node_type in sql_entry_tokens and syntax_valid(program, sql_cfg)
