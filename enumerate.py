@@ -26,12 +26,12 @@ TODO:
 - [DOC] Explicitly document and set terms for operations and relationships
     between nodes and partial ASTs.
 - [DOC] Switch the partial_ast's __str__ to a __repr__ and redo docs
-- [DOC] Completely flush max_depth through docs
+- [DOC] Completely flush complexity through docs
 """
 
 class PartialAst(namedtuple('PartialAst', [
         'nodes',
-        'max_depth',
+        'complexity',
         'open_node_indices',
 ])):
     """
@@ -47,7 +47,11 @@ class PartialAst(namedtuple('PartialAst', [
         - Node type.
         - Node depth (cached.)
         - Node children (optional list of indices.)
-    :param int max_depth: Maximum depth of any node in partial AST.
+    :param int complexity: Arbitrary, incrementally computable complexity measure.
+        Used for expanding exploring ASTs by prior likelihood.
+        Current formula: SUM(node_weights)
+        Things we could add in:
+        - 2 ** depth
     :param Set[int] open_node_indices: Set of leaf nodes.
 
     :Example:
@@ -59,7 +63,7 @@ class PartialAst(namedtuple('PartialAst', [
                 ('TOP_JOINS', 2, None),
                 ('EXPR', 2, None),
             ],
-            max_depth=2,
+            complexity=16,
             open_node_indices=frozenset({1, 2, 3}),
         )
 
@@ -72,12 +76,12 @@ class PartialAst(namedtuple('PartialAst', [
         return (
             'PartialAst(\n'
             '    nodes={nodes},\n'
-            '    max_depth={max_depth},\n'
+            '    complexity={complexity},\n'
             '    open_node_indices={open_nodes},\n'
             ')'
         ).format(
             nodes=pformated(self.nodes),
-            max_depth=int(self.max_depth),
+            complexity=int(self.complexity),
             open_nodes=pformated(self.open_node_indices),
         )
 """
@@ -98,14 +102,14 @@ def initial_partial_asts(entry_tokens, node_weights):
     >>> from sql_ast import sql_entry_tokens, sql_heuristic_weight
 
     >>> pprint(list(initial_partial_asts(sql_entry_tokens, sql_heuristic_weight)))
-    [PartialAst(nodes=[('SELECT_AGG', 4, None)], max_depth=4, open_node_indices=frozenset({0})),
-     PartialAst(nodes=[('SELECT_AGG_WHERE', 4, None)], max_depth=4, open_node_indices=frozenset({0}))]
+    [PartialAst(nodes=[('SELECT_AGG', 4, None)], complexity=4, open_node_indices=frozenset({0})),
+     PartialAst(nodes=[('SELECT_AGG_WHERE', 4, None)], complexity=4, open_node_indices=frozenset({0}))]
     """
     for node_type in entry_tokens:
         node_type_weight = node_weights[node_type]
         yield PartialAst(
             nodes=[(node_type, node_type_weight, None)],
-            max_depth=node_type_weight,
+            complexity=node_type_weight,
             open_node_indices=frozenset({0}),
         )
 
@@ -122,7 +126,7 @@ def most_shallow_node_index(partial_ast):
     >>> level_1 = example_partial_asts['level_1']
 
     >>> root
-    PartialAst(nodes=[('SELECT_AGG', 1, None)], max_depth=1, open_node_indices=frozenset({0}))
+    PartialAst(nodes=[('SELECT_AGG', 1, None)], complexity=4, open_node_indices=frozenset({0}))
     >>> most_shallow_node_index(root)
     0
 
@@ -183,7 +187,7 @@ def pattern_expanded_partial_ast(
     if children_type_pattern == (None,): # Terminating special case.
         return PartialAst(
             nodes=list(partial_ast.nodes),
-            max_depth=partial_ast.max_depth,
+            complexity=partial_ast.complexity,
             open_node_indices=(
                 partial_ast.open_node_indices - {selected_node_index}
             ),
@@ -204,8 +208,8 @@ def pattern_expanded_partial_ast(
         children_node_indices,
     )
 
-    max_depth = max(
-        parent_node_depth + node_weights[child_type]
+    next_complexity = partial_ast.complexity + sum(
+        node_weights[child_type]
         for child_type in children_type_pattern
     )
 
@@ -215,7 +219,7 @@ def pattern_expanded_partial_ast(
 
     return PartialAst(
         nodes=next_nodes,
-        max_depth=max_depth,
+        complexity=next_complexity,
         open_node_indices=next_open_node_indices,
     )
 
@@ -339,8 +343,9 @@ def ast_enumerated(
         entry_tokens,
         cfg_spec,
         weights=None,
-        max_depth=None,
+        max_complexity=None,
         symbols=None,
+        status_func=None,
 ):
     """
     The enumerated list of all SQL ASTs.
@@ -360,7 +365,7 @@ def ast_enumerated(
                     sql_cfg,
                     weights=sql_heuristic_weight,
                     symbols=['student', 'department'],
-                    max_depth=20,
+                    max_complexity=20,
             ):
                 yield sql_query_str(sql_ast)
 
@@ -384,7 +389,7 @@ def ast_enumerated(
     cfg_spec = cfg_with_symbols(cfg_spec, symbols)
 
     current_partial_asts = [
-        (partial_ast.max_depth,
+        (partial_ast.complexity,
          (len(partial_ast.nodes), id(partial_ast)), # Arbitrary sort key.
          partial_ast)
         for partial_ast in initial_partial_asts(entry_tokens, weights)
@@ -392,11 +397,12 @@ def ast_enumerated(
     heapify(current_partial_asts)
 
     while True:
-        global_min_depth, _, shallowest_partial_ast = heappop(current_partial_asts)
-        if max_depth and global_min_depth > max_depth:
+        min_complexity, _, shallowest_partial_ast = heappop(current_partial_asts)
+        if max_complexity and min_complexity > max_complexity:
             return
 
-        print(len(current_partial_asts))
+        if bool(status_func) and len(current_partial_asts) % 1000000 == 0:
+            status_func(shallowest_partial_ast, len(current_partial_asts))
 
         for next_partial_ast in (
                 next_partial_asts(shallowest_partial_ast, cfg_spec, weights)
@@ -405,7 +411,7 @@ def ast_enumerated(
                 yield ast_from_partial_ast(next_partial_ast)
             else:
                 heappush(current_partial_asts, (
-                    next_partial_ast.max_depth,
+                    next_partial_ast.complexity,
                     (len(next_partial_ast.nodes),
                      id(next_partial_ast)),
                     next_partial_ast,

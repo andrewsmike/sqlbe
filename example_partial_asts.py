@@ -14,14 +14,14 @@ __all__ = [
 example_partial_asts = {
     'empty': PartialAst(
         nodes=[],
-        max_depth=0,
+        complexity=0,
         open_node_indices=frozenset(),
     ),
     'root': PartialAst(
         nodes=[
             ('SELECT_AGG', 1, None),
         ],
-        max_depth=1,
+        complexity=4,
         open_node_indices=frozenset({0}),
     ),
     "level_1": PartialAst(
@@ -31,7 +31,7 @@ example_partial_asts = {
             ('TOP_JOINS', 2, None),
             ('EXPR', 2, None),
         ],
-        max_depth=2,
+        complexity=16,
         open_node_indices=frozenset({1, 2, 3}),
     )
 }
