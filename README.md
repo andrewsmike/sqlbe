@@ -3,17 +3,17 @@ SQL By Example
 Given an example database and a desired output, receive functional SQL statements.
 
 Backlog:
-- [OPTIONAL] Separate out generic CFG tools from SQL CFG
-- Build enumerate CFG func
 - [Optional] Build a query plan representation
 - Build out SQL eval functions
+- [OPTIONAL] Separate out generic CFG tools from SQL CFG
 - Write search.py
+- Enumerate.py cleanup
 
 Current status:
-- [ ] Enumerate SQL programs
+- [X] Enumerate SQL programs
 - - [X] Build SQL CFG
 - [ ] Execute SQL programs
-- [ ] Estimate and display enumeration progress
+- [ ] Display enumeration progress nicely
 - [X] Render SQL programs into query string
 
 - [X] CFG tools (syntax verification, debugging, etc)
@@ -25,7 +25,9 @@ Current status:
 
 Breakdown
 - sql_ast: CFG/AST tools, SQL CFG, SQL AST -> SQL query string
-- sql_eval: Evaluate SQL queries.
-- search: SQL CFG search methods.
+- enumerate: CFG enumeration methods.
+WIP:
 - models: Useful models.
+- sql_eval: Evaluate SQL queries.
+- search: Search for SQL queries that satisfy example pairs.
 
