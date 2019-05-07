@@ -319,7 +319,6 @@ sql_cfg = {
 sql_heuristic_weight = defaultdict(lambda: 4, {
     'JOINS': 30,
     'GROUP_EXPRS': 20,
-    'SEL_EXPRS': 10,
 })
 
 # Helper for building SQL queries from SQL ASTs
@@ -453,12 +452,14 @@ def sql_expr_str(expr_node):
 
     if node_type == "EXPR":
         return sql_expr_str(node_children[0])
-    elif node_type == "DOT":
+    elif node_type in ("DOT", "EQ", "AND"):
         left, right = node_children
-        return sql_expr_str(left) + "." + sql_expr_str(right)
-    elif node_type == "EQ":
-        left, right = node_children
-        return sql_expr_str(left) + " = " + sql_expr_str(right)
+        expr = {
+            "DOT": ".",
+            "EQ": " = ",
+            "AND": " AND ",
+        }[node_type]
+        return sql_expr_str(left) + expr + sql_expr_str(right)
     elif node_type == "SYMBOL":
         return node_children[0] # SYMBOL DECODE POINT
     elif node_type == "SUM":
