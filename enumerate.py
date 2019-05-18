@@ -3,7 +3,7 @@ AST enumeration method with internal stub AST representation.
 """
 from collections import namedtuple
 from copy import deepcopy
-from itertools import product
+from itertools import product, count
 from pprint import pformat
 from heapq import heapify, heappop, heappush
 
@@ -339,16 +339,36 @@ def cfg_with_symbols(cfg, symbols):
 
     return cfg
 
+def partial_ast_sort_key(partial_ast):
+    """
+    Sort by complexity, then node count, then arbitrary.
+    Note: This means there is a frustrating element of nondeterminism in
+    performance measures. This should be resolved with true nondeterminism and
+    statistics or a deterministic sort criteria with lazy, but complete,
+    comparison operators.
+    (IE short-circuit most comparsions, but go into details when necessary.)
+    """
+    return (
+        partial_ast.complexity,
+        len(partial_ast.nodes),
+        id(partial_ast),
+    )
+
 def ast_enumerated(
         entry_tokens,
         cfg_spec,
         weights=None,
         max_complexity=None,
         symbols=None,
+        status_frequency=None,
         status_func=None,
 ):
     """
     The enumerated list of all SQL ASTs.
+
+    TODO:
+    - Abstract out details of algorithm into helpers
+    - [Optional] Restructure as search state object + iteration func + loop
 
     :Example:
     >>> from sql_ast import (
@@ -389,30 +409,26 @@ def ast_enumerated(
     cfg_spec = cfg_with_symbols(cfg_spec, symbols)
 
     current_partial_asts = [
-        (partial_ast.complexity,
-         (len(partial_ast.nodes), id(partial_ast)), # Arbitrary sort key.
-         partial_ast)
+        (partial_ast_sort_key(partial_ast), partial_ast)
         for partial_ast in initial_partial_asts(entry_tokens, weights)
     ]
     heapify(current_partial_asts)
 
-    while True:
-        min_complexity, _, shallowest_partial_ast = heappop(current_partial_asts)
-        if max_complexity and min_complexity > max_complexity:
+    for iteration in count():
+        _, simplest_partial_ast = heappop(current_partial_asts)
+        if max_complexity and simplest_partial_ast.complexity > max_complexity:
             return
 
-        if bool(status_func) and len(current_partial_asts) % 1000000 == 0:
-            status_func(shallowest_partial_ast, len(current_partial_asts))
+        if bool(status_frequency) and iteration % status_frequency == 0:
+            status_func(simplest_partial_ast, iteration, len(current_partial_asts))
 
         for next_partial_ast in (
-                next_partial_asts(shallowest_partial_ast, cfg_spec, weights)
+                next_partial_asts(simplest_partial_ast, cfg_spec, weights)
         ):
             if partial_ast_complete(next_partial_ast): # SYMBOL HANDLING IN COND
                 yield ast_from_partial_ast(next_partial_ast)
             else:
                 heappush(current_partial_asts, (
-                    next_partial_ast.complexity,
-                    (len(next_partial_ast.nodes),
-                     id(next_partial_ast)),
+                    partial_ast_sort_key(next_partial_ast),
                     next_partial_ast,
                 ))

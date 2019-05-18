@@ -27,7 +27,7 @@ example_tables = {
         SELECT department.name AS department_name, SUM(1) AS students
           FROM student
           LEFT JOIN department
-            ON department.id = student.department_id # Can't notice the name similarity.
+            ON department.id = student.department_id
          GROUP BY department.name
         """,
         columns=('department_name', 'students'),

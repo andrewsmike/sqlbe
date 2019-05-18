@@ -299,9 +299,9 @@ Notes about CFG:
 sql_entry_tokens = {'SELECT_AGG', 'SELECT_AGG_WHERE'}
 
 sql_cfg = {
-    'SELECT_AGG': [{'SELECT_EXPRS', 'EXPR_AS'}, {'TOP_JOINS', 'FROM'}, {'GROUP_EXPRS', 'EXPR'}],
-    'SELECT_AGG_WHERE': [{'SELECT_EXPRS', 'EXPR_AS'}, {'TOP_JOINS', 'FROM'}, {'GROUP_EXPRS', 'EXPR'}, 'EXPR'],
-    'SELECT_EXPRS': [{'EXPR_AS'}, {'SELECT_EXPRS', 'EXPR_AS'}],
+    'SELECT_AGG': [{'SELECT_EXPRS', 'EXPR_AS', 'EXPR'}, {'TOP_JOINS', 'FROM'}, {'GROUP_EXPRS', 'EXPR'}],
+    'SELECT_AGG_WHERE': [{'SELECT_EXPRS', 'EXPR_AS', 'EXPR'}, {'TOP_JOINS', 'FROM'}, {'GROUP_EXPRS', 'EXPR'}, 'EXPR'],
+    'SELECT_EXPRS': [{'EXPR_AS', 'EXPR'}, {'SELECT_EXPRS', 'EXPR_AS', 'EXPR'}],
     'EXPR_AS': ['EXPR', 'SYMBOL'],
     'EXPR': [{'EQ', 'DOT', 'SYMBOL', 'SUM', 'AND'}],
     'TOP_JOINS': ['FROM', {'JOINS', 'LEFT_JOIN_ON'}],

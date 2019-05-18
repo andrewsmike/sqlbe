@@ -16,13 +16,16 @@ from sql_ast import (
 )
 
 
-def report_search_status(next_ast, partial_ast_count):
+def report_search_status(next_ast, iteration, partial_ast_count):
     mem_stats = virtual_memory()
     print("<<<BEGIN SYSTEM STATISTICS>>>")
-    print(("Partial ASTs: {partial_ast_count}\n"
-           "Memory: {memory_used}/{memory_total} [{memory_percent}]\n"
-           "Min complexity: {complexity}"
+    print((
+        "Iteration: {iteration}\n"
+        "Partial ASTs: {partial_ast_count}\n"
+        "Memory: {memory_used}/{memory_total} [{memory_percent}]\n"
+        "Min complexity: {complexity}"
     ).format(
+        iteration=iteration,
         partial_ast_count=partial_ast_count,
         memory_used=naturalsize(mem_stats.used),
         memory_total=naturalsize(mem_stats.total),
@@ -41,6 +44,7 @@ def sql_queries_enumerated():
             symbols=['student', 'department'],
             max_complexity=256,
             status_func=report_search_status,
+            status_frequency=100,
     ):
         yield sql_query_str(sql_ast)
 
